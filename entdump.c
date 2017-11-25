@@ -174,7 +174,8 @@ void CMod_LoadEntityString (lump_t *lump)
 =================
 CMod_LoadSurfaces
 =================
-//QW// pulled this from quake2 engine source and modified
+//QW// pulled this from quake2 engine source and modified it
+to list textures used flagging the missing ones.
 */
 void CMod_LoadSurfaces (lump_t *lump)
 {
@@ -262,7 +263,10 @@ int has_wild(char *filename)
 	return 0;
 }
 
-
+/*
+ Iterate over the wild-carded files
+ listing the textures used in each.
+*/
 int DrivePath (char* filepath)
 {
 	unsigned status = 0;
@@ -313,7 +317,7 @@ int DrivePath (char* filepath)
 	return (status);
 }
 
-// print out the textures used in the map
+// List the textures used in the map
 // identify those that are missing.
 // NOTE: this function only outputs the .wal files
 // and it only gets called if we're wild-carding
@@ -393,6 +397,7 @@ int main(int argc, char* argv[])
 		printf("format for usage with the added ent file support in Xatrix+ and other mods.\n");
 		printf("Usage: entdump mapname.bsp \n");
 		printf("   or: entdump mapname.bsp > mapname.txt \n");
+		printf("   or: entdump *.bsp > textures.txt \n");
 		printf("   or: entdump mapname.bsp | more \n");
 		return EXIT_FAILURE;
 	}
@@ -421,9 +426,6 @@ int main(int argc, char* argv[])
 
 	cmod_base = buf;
 
-	// load into heap
-	printf("Map textures:\n");
-	CMod_LoadSurfaces (&header.lumps[LUMP_TEXINFO]);
 	printf("Map entities:\n");
 	CMod_LoadEntityString (&header.lumps[LUMP_ENTITIES]);
 
