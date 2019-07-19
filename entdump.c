@@ -9,12 +9,16 @@
 // Nick I fixed so that the ent.file didn't have a double newline at the end.
 
 // January 11, 2010, QwazyWabbit added texture file name output, usage info
-
+// July 18, 2019, QwazyWabbit add missing texture flagging.
+// Process wild-card filenames.
+// 
 #ifdef _WIN32
+#if _MSC_VER > 1500
 #pragma warning(disable : 4996)
+#endif
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
-#include <io.h>
-#include "curl.h"
+#include <io.h>	/* for the _find* functions */
 #endif
 
 #include <stdio.h>
@@ -84,7 +88,7 @@ typedef struct lump_s
 typedef struct dheader_s
 {
 	int			ident;
-	int			version;	
+	int			version;
 	lump_t		lumps[HEADER_LUMPS];
 } dheader_t;
 
@@ -111,15 +115,16 @@ typedef struct mapsurface_s  // used internally due to name len probs //ZOID
 	int			dupe;	//QwazyWabbit// added
 } mapsurface_t;
 
-int		LittleLong (int l) {return (l);}
+int	LittleLong(int l) { return (l); }
 
 // globals
-uint8_t	*cmod_base;
+uint8_t* cmod_base;
 int		numtexinfo;
 char	map_entitystring[MAX_MAP_ENTSTRING];
 mapsurface_t	map_surfaces[MAX_MAP_TEXINFO];
+size_t	count_total_missing;
 
-FILE *infile;
+FILE* infile;
 char inpath[MAX_PATH];
 char drive[_MAX_DRIVE];
 char dir[_MAX_DIR];
@@ -127,47 +132,152 @@ char fname[_MAX_FNAME];
 char ext[_MAX_EXT];
 long hFile;
 struct _finddata_t file;
+int filesize;
 
 #define ERR_CONTINUE 0
 #define ERR_DROP 1
 
-/* function prototypes */
-int wal_exists( char *name);
-void Com_Error (int code, char *fmt, ...);
-void CMod_LoadEntityString (lump_t *lump);
-void CMod_LoadSurfaces (lump_t *lump);
-int FilterFile(FILE *in);
-int has_wild(char *fname);
-int DrivePath (char* filepath);
+int wal_exists(char* name);
+void Com_Error(int code, char* fmt, ...);
+void CMod_LoadEntityString(lump_t* lump);
+void CMod_LoadSurfaces(lump_t* lump);
+int FilterFile(FILE* in);
+int has_wild(char* fname);
+int DrivePath(char* filepath);
 
-void Com_Error (int code, char *fmt, ...)
+int main(int argc, char* argv[])
+{
+	uint8_t* buf;
+	int i;
+	int len;
+	dheader_t header;
+	FILE* in = NULL;
+
+	if (argc > 1)
+	{
+		if (has_wild(argv[1]))
+		{
+			DrivePath(argv[1]);
+			printf("%lu total missing textures.\n", count_total_missing);
+			return EXIT_SUCCESS;
+		}
+		else
+		{
+			in = fopen(argv[1], "rb");
+			if (!in)
+			{
+				fprintf(stderr, "FATAL ERROR: fopen() on %s failed.\n", argv[1]);
+				return EXIT_FAILURE;
+			}
+		}
+	}
+	else
+	{
+		//print usage info
+		printf("Entdump v1.1 is used for extracting entities from quake2 bsp files in text\n");
+		printf("format for usage with the added ent file support in Xatrix+ and other mods.\n");
+		printf("Wildcard names cause Entdump to output only the texture inventories.\n");
+		printf("Usage: entdump mapname.bsp \n");
+		printf("   or: entdump mapname.bsp > mapname.txt \n");
+		printf("   or: entdump mapname.bsp | more \n");
+		return EXIT_FAILURE;
+	}
+
+	count_total_missing = 0;
+	printf("Opening file: %s\n", argv[1]);
+	fseek(in, 0, SEEK_END);
+	len = ftell(in);
+	fseek(in, 0, SEEK_SET);
+
+	buf = malloc(len);
+	filesize = len;
+
+	if (buf)
+		fread(buf, len, 1, in);
+	else
+	{
+		printf("Memory allocation failed.\n");
+		return EXIT_FAILURE;
+	}
+
+	//map header structs onto the buffer
+	header = *(dheader_t*)buf;
+	for (i = 0; i < sizeof(dheader_t) / 4; i++)
+		((int*)& header)[i] = LittleLong(((int*)& header)[i]);
+
+	if (header.version != BSPVERSION)
+		Com_Error(ERR_DROP, "This is not a valid BSP file.");
+
+	//r1: check header pointers point within allocated data
+	for (i = 0; i < HEADER_LUMPS; i++)
+	{
+		//for some reason there are unused lumps with invalid values
+		if (i == LUMP_POP)
+			continue;
+
+		if (header.lumps[i].fileofs < 0 || header.lumps[i].length < 0 ||
+			header.lumps[i].fileofs + header.lumps[i].length > len)
+			Com_Error(ERR_DROP, "%s: lump %d offset %d of size %d is out of bounds\n"
+				"%s is probably truncated or otherwise corrupted",
+				__func__, i, header.lumps[i].fileofs,
+				header.lumps[i].length, argv[1]);
+	}
+
+	cmod_base = buf;
+
+	printf("Map textures:\n");
+	CMod_LoadSurfaces(&header.lumps[LUMP_TEXINFO]);
+
+	printf("Map entities:\n");
+	CMod_LoadEntityString(&header.lumps[LUMP_ENTITIES]);
+
+	if (buf)
+		free(buf);
+	fclose(in);
+
+	return EXIT_SUCCESS;
+}
+
+void Com_Error(int code, char* fmt, ...)
 {
 	va_list argptr;
 	static char msg[1024];
 
-	va_start (argptr, fmt);
-	vsprintf (msg, fmt, argptr);
-	va_end (argptr);
+	va_start(argptr, fmt);
+	vsprintf(msg, fmt, argptr);
+	va_end(argptr);
 
-	fprintf (stderr, "ERROR: %s\n", msg);
-	fprintf (stdout, "ERROR: %s\n", msg);
-	if(code == ERR_DROP)
-		exit (EXIT_FAILURE);
+	fprintf(stdout, "ERROR: %s\n", msg);
+	if (code == ERR_DROP)
+		exit(EXIT_FAILURE);
 }
 
-void CMod_LoadEntityString (lump_t *lump)
+void CMod_LoadEntityString(lump_t* lump)
 {
-	if (lump->length > MAX_MAP_ENTSTRING)
-		Com_Error (ERR_DROP, "Map has too large entity lump (%d > %d)", lump->length, MAX_MAP_ENTSTRING);
 
-	//QW// This usage is safe. MAX_MAP_ENTITIES, the max lump length, is < MAX_MAP_ENTSTRING
-	memcpy (map_entitystring, cmod_base + lump->fileofs, lump->length);
+	if (lump->length > MAX_MAP_ENTSTRING)
+	{
+		Com_Error(ERR_CONTINUE, "Map has too large entity lump (%d > %d)",
+			lump->length, MAX_MAP_ENTSTRING);
+		return;
+	}
+	if (lump->fileofs + lump->length > filesize)
+	{
+		Com_Error(ERR_CONTINUE, "Entity lump parameter error in file %s\n"
+			"lump offset %d + length %d exceeds filesize %d\n"
+			"the file is truncated or otherwise corrupted.\n",
+			file.name, lump->fileofs, lump->length, filesize);
+		return;
+	}
+
+	memset(map_entitystring, 0, sizeof map_entitystring);
+	memcpy(map_entitystring, cmod_base + lump->fileofs, lump->length);
 
 	// remove newline at end of lump string if present.
 	if (!strcmp(&map_entitystring[strlen(map_entitystring) - 1], "\n"))
 		map_entitystring[strlen(map_entitystring) - 1] = '\0';
 
-	printf ("%s\n", map_entitystring);
+	printf("%s\n", map_entitystring);
 }
 
 /*
@@ -175,33 +285,38 @@ void CMod_LoadEntityString (lump_t *lump)
 CMod_LoadSurfaces
 =================
 //QW// pulled this from quake2 engine source and modified it
-to list textures used flagging the missing ones.
+to list textures used and to flag the missing ones.
 */
-void CMod_LoadSurfaces (lump_t *lump)
+void CMod_LoadSurfaces(lump_t* lump)
 {
-	texinfo_t *in;
-	mapsurface_t *out;
-	mapsurface_t *list;
+	texinfo_t* in;
+	mapsurface_t* out;
+	mapsurface_t* list;
 	int i;
 	int j;
 	int count;
 	int uniques;
+	size_t	count_map_missing;
 
-	in = (void *)(cmod_base + lump->fileofs);
+	count_map_missing = 0;
+	in = (void*)(cmod_base + lump->fileofs);
 	if (lump->length % sizeof(*in))
 	{
-		Com_Error (ERR_CONTINUE, "CMod_LoadSurfaces: funny lump size in %s", file.name);
+		Com_Error(ERR_CONTINUE, "%s: funny lump size in %s",
+			__func__, file.name);
 		return;
 	}
 	count = lump->length / sizeof(*in);
 	if (count < 1)
 	{
-		Com_Error (ERR_CONTINUE, "CMod_LoadSurfaces: Map with no surfaces: %s", file.name);
+		Com_Error(ERR_CONTINUE, "%s: Map with no surfaces: %s",
+			__func__, file.name);
 		return;
 	}
 	if (count > MAX_MAP_TEXINFO)
 	{
-		Com_Error (ERR_CONTINUE, "CMod_LoadSurfaces: Map has too many surfaces: %s", file.name);
+		Com_Error(ERR_CONTINUE, "%s: Map has too many surfaces: %s",
+			__func__, file.name);
 		return;
 	}
 
@@ -211,49 +326,51 @@ void CMod_LoadSurfaces (lump_t *lump)
 
 	for (i = 0; i < count; i++, in++, out++)
 	{
-		strncpy (out->c.name, in->texture, sizeof(out->c.name)-1);
-		strncpy (out->rname, in->texture, sizeof(out->rname)-1);
-		out->c.flags = LittleLong (in->flags);
-		out->c.value = LittleLong (in->value);
+		strncpy(out->c.name, in->texture, sizeof(out->c.name) - 1);
+		strncpy(out->rname, in->texture, sizeof(out->rname) - 1);
+		out->c.flags = LittleLong(in->flags);
+		out->c.value = LittleLong(in->value);
 		out->dupe = 0;
 
 		list = map_surfaces;
 		for (j = 0; j < count; j++, list++)	// identify each unique texture name
 		{
-			if (strcmp(list->rname, "") != 0 
-				&& list != out 
+			if (strcmp(list->rname, "") != 0
+				&& list != out
 				&& strcmp(list->rname, out->rname) == 0)
 				out->dupe = 1;	//flag the duplicate
 		}
-		if (!out->dupe) 
+		if (!out->dupe)
 		{
 			uniques++;
 			if (wal_exists(out->rname))
 				printf("textures/%s.wal\n", out->rname);
-			else
+			else {
 				printf("textures/%s.wal file is MISSING for %s\n", out->rname, file.name);
+				count_map_missing++;
+				count_total_missing++;
+			}
 		}
 	}
 	printf("Map uses %i unique textures %i times\n", uniques, count);
+	printf("Missing %lu textures.\n", count_map_missing);
 }
 
-int wal_exists( char *name)
+int wal_exists(char* name)
 {
 	char wal_name[_MAX_PATH];
-	FILE *f;
+	FILE* f;
 
 	sprintf(wal_name, "/quake2/baseq2/textures/%s.wal", name);
 	f = fopen(wal_name, "r");
-	if (f) 
-	{
+	if (f) {
 		fclose(f);
 		return 1;
 	}
-	else
-		return 0;
+	return 0;
 }
 
-int has_wild(char *filename)
+int has_wild(char* filename)
 {
 	char c;
 
@@ -267,75 +384,78 @@ int has_wild(char *filename)
  Iterate over the wild-carded files
  listing the textures used in each.
 */
-int DrivePath (char* filepath)
+int DrivePath(char* filepath)
 {
 	unsigned status = 0;
 	int nfiles = 0;
 	int num;
 
-	if( (hFile = _findfirst( filepath, &file )) == -1L )
+	if ((hFile = _findfirst(filepath, &file)) == -1L)
 	{
-		printf( "No files named %s found.\n", filepath );
+		printf("No files named %s found.\n", filepath);
 		status = 1;	//error status
 	}
-	else 
+	else
 	{
 		nfiles++;
-		while (_findnext (hFile, &file) == 0) 
+		while (_findnext(hFile, &file) == 0)
 		{
 			nfiles++;
 		}
-		_findclose( hFile );
-		hFile = _findfirst( filepath, &file );
+		_findclose(hFile);
+		hFile = _findfirst(filepath, &file);
 		// the file is "found" without path spec
 		// so we have to rebuild the path
 		_splitpath(filepath, drive, dir, fname, ext);
 		_makepath(inpath, drive, dir, file.name, NULL);
 		printf("Opening %s\n", file.name);
 		infile = fopen(inpath, "r");
-		if(infile)
+		if (infile)
 		{
 			status = FilterFile(infile);
 			fclose(infile);
 		}
-		for (num = 1; num < nfiles; ++num) 
+		for (num = 1; num < nfiles; ++num)
 		{
-			_findnext (hFile, &file);
+			if (_findnext(hFile, &file) != 0)
+				Com_Error(ERR_DROP, "Whoops, couldn't find next file!");
 			_splitpath(filepath, drive, dir, fname, ext);
 			_makepath(inpath, drive, dir, file.name, NULL);
 			printf("Opening %s\n", file.name);
 			infile = fopen(inpath, "r");
-			if(infile)
+			if (infile)
 			{
 				status = FilterFile(infile);
 				fclose(infile);
 			}
 		}
 	}
-	printf("%i map files processed\n", nfiles);
-	_findclose( hFile );
+	printf("%i map files processed.\n", nfiles);
+	_findclose(hFile);
 	return (status);
 }
 
 // List the textures used in the map
 // identify those that are missing.
-// NOTE: this function only outputs the .wal files
-// and it only gets called if we're wild-carding
+// NOTE: this function outputs only the .wal files
+// and it gets called if we're wild-carding
 // the map file names in the command line.
-int FilterFile(FILE *in)
+int FilterFile(FILE* in)
 {
-	uint8_t	*buf = NULL;
+	uint8_t* buf = NULL;
 	int		i;
 	int		len;
 	dheader_t	header;
 
-	fseek (in, 0, SEEK_END);
-	len = ftell (in);
-	fseek (in, 0, SEEK_SET);
+	fseek(in, 0, SEEK_END);
+	len = ftell(in);
+	fseek(in, 0, SEEK_SET);
 
 	buf = malloc(len);
-	if(buf)
-		fread (buf, len, 1, in);
+	filesize = len;
+
+	if (buf)
+		fread(buf, len, 1, in);
 	else
 	{
 		printf("Memory allocation failed.\n");
@@ -343,94 +463,40 @@ int FilterFile(FILE *in)
 	}
 
 	//map header structs onto the buffer
-	header = *(dheader_t *)buf;
-	for (i = 0; i < sizeof(dheader_t)/4; i++)
-		((int *)&header)[i] = LittleLong ( ((int *)&header)[i]);
+	header = *(dheader_t*)buf;
+	for (i = 0; i < sizeof(dheader_t) / 4; i++)
+		((int*)& header)[i] = LittleLong(((int*)& header)[i]);
+
+	//r1: check header pointers point within allocated data
+	for (i = 0; i < HEADER_LUMPS; i++)
+	{
+		//for some reason there are unused lumps with invalid values
+		if (i == LUMP_POP)
+			continue;
+
+		if (header.lumps[i].fileofs < 0 || header.lumps[i].length < 0 ||
+			header.lumps[i].fileofs + header.lumps[i].length > len)
+		{
+			Com_Error(ERR_DROP,
+				"%s: lump %d offset %d of size %d is out of bounds\n"
+				"%s is probably truncated or otherwise corrupted",
+				__func__, i, header.lumps[i].fileofs,
+				header.lumps[i].length, file.name);
+		}
+	}
 
 	if (header.version != BSPVERSION)
 	{
-		Com_Error (ERR_CONTINUE, "%s is not a valid BSP file.", file.name);
+		Com_Error(ERR_CONTINUE, "%s is not a valid BSP file.", file.name);
 	}
 	else
 	{
 		cmod_base = buf;
-
-		// load into heap
 		printf("Map textures:\n");
-		CMod_LoadSurfaces (&header.lumps[LUMP_TEXINFO]);
+		CMod_LoadSurfaces(&header.lumps[LUMP_TEXINFO]);
 	}
 
 	if (buf)
-		free (buf);
+		free(buf);
 	return 0;
-}
-
-int main(int argc, char* argv[])
-{
-	uint8_t *buf;
-	int i;
-	int len;
-	dheader_t header;
-	FILE *in = NULL;
-
-	if (argc > 1)
-	{
-		if (has_wild(argv[1]))
-		{
-			DrivePath(argv[1]);
-			return EXIT_SUCCESS;
-		}	
-		else
-		{
-			in = fopen(argv[1], "rb");
-			if (!in) 
-			{
-				fprintf (stderr, "FATAL ERROR: fopen() on %s failed.\n", argv[1]);
-				return EXIT_FAILURE;
-			}
-		}
-	}
-	else
-	{
-		//print usage info
-		printf("Entdump v1.1 is used for extracting entities from quake2 bsp files in text\n");
-		printf("format for usage with the added ent file support in Xatrix+ and other mods.\n");
-		printf("Usage: entdump mapname.bsp \n");
-		printf("   or: entdump mapname.bsp > mapname.txt \n");
-		printf("   or: entdump *.bsp > textures.txt \n");
-		printf("   or: entdump mapname.bsp | more \n");
-		return EXIT_FAILURE;
-	}
-
-	printf("Opening file: %s\n", argv[1]);
-	fseek (in, 0, SEEK_END);
-	len = ftell (in);
-	fseek (in, 0, SEEK_SET);
-
-	buf = malloc(len);
-	if(buf)
-		fread (buf, len, 1, in);
-	else
-	{
-		printf("Memory allocation failed.\n");
-		return EXIT_FAILURE;
-	}
-
-	//map header structs onto the buffer
-	header = *(dheader_t *)buf;
-	for (i = 0; i < sizeof(dheader_t)/4; i++)
-		((int *)&header)[i] = LittleLong ( ((int *)&header)[i]);
-
-	if (header.version != BSPVERSION)
-		Com_Error (ERR_DROP, "This is not a valid BSP file.");
-
-	cmod_base = buf;
-
-	printf("Map entities:\n");
-	CMod_LoadEntityString (&header.lumps[LUMP_ENTITIES]);
-
-	if (buf)
-		free (buf);
-	fclose (in);
-	return EXIT_SUCCESS;
 }
