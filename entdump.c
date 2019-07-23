@@ -11,7 +11,8 @@
 // January 11, 2010, QwazyWabbit added texture file name output, usage info
 // July 18, 2019, QwazyWabbit add missing texture flagging.
 // Process wild-card filenames.
-// 
+//
+
 #ifdef _WIN32
 #if _MSC_VER > 1500
 #pragma warning(disable : 4996)
