@@ -61,7 +61,7 @@
 #define	MAX_MAP_MODELS		1024
 #define	MAX_MAP_BRUSHES		8192
 #define	MAX_MAP_ENTITIES	2048
-#define	MAX_MAP_ENTSTRING	0x40000
+#define	MAX_MAP_ENTSTRING	0x40000 //(262,144)
 #define	MAX_MAP_TEXINFO		8192
 
 #define	MAX_MAP_AREAS		256
@@ -131,7 +131,7 @@ char drive[_MAX_DRIVE];
 char dir[_MAX_DIR];
 char fname[_MAX_FNAME];
 char ext[_MAX_EXT];
-long hFile;
+intptr_t hFile;
 struct _finddata_t file;
 int filesize;
 
@@ -156,10 +156,11 @@ int main(int argc, char* argv[])
 
 	if (argc > 1)
 	{
+		DrivePath(argv[1]);
+
 		if (has_wild(argv[1]))
 		{
-			DrivePath(argv[1]);
-			printf("%lu total missing textures.\n", count_total_missing);
+			printf("%zu total missing textures.\n", count_total_missing);
 			return EXIT_SUCCESS;
 		}
 		else
@@ -354,7 +355,7 @@ void CMod_LoadSurfaces(lump_t* lump)
 		}
 	}
 	printf("Map uses %i unique textures %i times\n", uniques, count);
-	printf("Missing %lu textures.\n", count_map_missing);
+	printf("Missing %zu textures.\n", count_map_missing);
 }
 
 int wal_exists(char* name)
