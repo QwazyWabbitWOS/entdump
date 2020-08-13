@@ -116,8 +116,6 @@ typedef struct mapsurface_s  // used internally due to name len probs //ZOID
 	int			dupe;	//QwazyWabbit// added
 } mapsurface_t;
 
-int	LittleLong(int l) { return (l); }
-
 // globals
 uint8_t* cmod_base;
 int		numtexinfo;
@@ -204,8 +202,6 @@ int main(int argc, char* argv[])
 
 	//map header structs onto the buffer
 	header = *(dheader_t*)buf;
-	for (i = 0; i < sizeof(dheader_t) / 4; i++)
-		((int*)& header)[i] = LittleLong(((int*)& header)[i]);
 
 	if (header.version != BSPVERSION)
 		Com_Error(ERR_DROP, "This is not a valid BSP file.");
@@ -330,8 +326,8 @@ void CMod_LoadSurfaces(lump_t* lump)
 	{
 		strncpy(out->c.name, in->texture, sizeof(out->c.name) - 1);
 		strncpy(out->rname, in->texture, sizeof(out->rname) - 1);
-		out->c.flags = LittleLong(in->flags);
-		out->c.value = LittleLong(in->value);
+		out->c.flags = in->flags;
+		out->c.value = in->value;
 		out->dupe = 0;
 
 		list = map_surfaces;
@@ -466,8 +462,6 @@ int FilterFile(FILE* in)
 
 	//map header structs onto the buffer
 	header = *(dheader_t*)buf;
-	for (i = 0; i < sizeof(dheader_t) / 4; i++)
-		((int*)& header)[i] = LittleLong(((int*)& header)[i]);
 
 	//r1: check header pointers point within allocated data
 	for (i = 0; i < HEADER_LUMPS; i++)
