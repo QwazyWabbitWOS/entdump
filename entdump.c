@@ -176,7 +176,7 @@ int main(int argc, char* argv[])
 		//print usage info
 		printf("Entdump v1.1 is used for extracting entities from quake2 bsp files in text\n");
 		printf("format for usage with the added ent file support in Xatrix+ and other mods.\n");
-		printf("Wildcard names cause Entdump to output only the texture inventories.\n");
+		printf("Wildcard names are acceptable but output is to a single file.\n");
 		printf("Usage: entdump mapname.bsp \n");
 		printf("   or: entdump mapname.bsp > mapname.txt \n");
 		printf("   or: entdump mapname.bsp | more \n");
@@ -360,7 +360,7 @@ int wal_exists(char* name)
 	FILE* f;
 
 	sprintf(wal_name, "/quake2/baseq2/textures/%s.wal", name);
-	f = fopen(wal_name, "r");
+	f = fopen(wal_name, "rb");
 	if (f) {
 		fclose(f);
 		return 1;
@@ -407,7 +407,7 @@ int DrivePath(char* filepath)
 		_splitpath(filepath, drive, dir, fname, ext);
 		_makepath(inpath, drive, dir, file.name, NULL);
 		printf("Opening %s\n", file.name);
-		infile = fopen(inpath, "r");
+		infile = fopen(inpath, "rb");
 		if (infile)
 		{
 			status = FilterFile(infile);
@@ -420,7 +420,7 @@ int DrivePath(char* filepath)
 			_splitpath(filepath, drive, dir, fname, ext);
 			_makepath(inpath, drive, dir, file.name, NULL);
 			printf("Opening %s\n", file.name);
-			infile = fopen(inpath, "r");
+			infile = fopen(inpath, "rb");
 			if (infile)
 			{
 				status = FilterFile(infile);
@@ -490,6 +490,9 @@ int FilterFile(FILE* in)
 		cmod_base = buf;
 		printf("Map textures:\n");
 		CMod_LoadSurfaces(&header.lumps[LUMP_TEXINFO]);
+
+		printf("Map entities:\n");
+		CMod_LoadEntityString(&header.lumps[LUMP_ENTITIES]);
 	}
 
 	if (buf)
