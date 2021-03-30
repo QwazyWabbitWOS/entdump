@@ -1,4 +1,4 @@
-Opening file: 1.bsp
+Opening 1.bsp
 Map textures:
 textures/E2U1/GRASS1_7.wal
 textures/E3U1/PTHNM1_2.wal
@@ -7,6 +7,7 @@ textures/E2U3/RMETAL4_1.wal
 textures/E2U3/RMETAL3_4.wal
 textures/E3U3/XSKY1.wal
 Map uses 6 unique textures 17 times
+Missing 0 textures.
 Map entities:
 {
 "classname" "worldspawn"

@@ -117,12 +117,12 @@ typedef struct mapsurface_s  // used internally due to name len probs //ZOID
 } mapsurface_t;
 
 // globals
-uint8_t* cmod_base;
+uint8_t* cmod_base;	//current module base index
 int		numtexinfo;
 char	map_entitystring[MAX_MAP_ENTSTRING];
 mapsurface_t	map_surfaces[MAX_MAP_TEXINFO];
-size_t	count_total_missing;
-
+size_t	count_total_missing = 0;
+size_t	count_total_files = 0;
 FILE* infile;
 char inpath[MAX_PATH];
 char drive[_MAX_DRIVE];
@@ -151,13 +151,15 @@ int main(int argc, char* argv[])
 	int len;
 	dheader_t header;
 	FILE* in = NULL;
+	int wildcards = 0;
 
 	if (argc > 1)
 	{
+		wildcards = has_wild(argv[1]);
 		DrivePath(argv[1]);
-
-		if (has_wild(argv[1]))
+		if (wildcards)
 		{
+			printf("%zu map files processed.\n", count_total_files);
 			printf("%zu total missing textures.\n", count_total_missing);
 			return EXIT_SUCCESS;
 		}
@@ -173,32 +175,30 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
-		//print usage info
 		printf("Entdump v1.1 is used for extracting entities from quake2 bsp files in text\n");
 		printf("format for usage with the added ent file support in Xatrix+ and other mods.\n");
 		printf("Wildcard names are acceptable but output is to a single file.\n");
 		printf("Usage: entdump mapname.bsp \n");
 		printf("   or: entdump mapname.bsp > mapname.txt \n");
 		printf("   or: entdump mapname.bsp | more \n");
-		return EXIT_FAILURE;
+		return 0;
 	}
 
 	count_total_missing = 0;
-	printf("Opening file: %s\n", argv[1]);
+	if(wildcards)
+		printf("Opening file: %s\n", argv[1]);
+
 	fseek(in, 0, SEEK_END);
 	len = ftell(in);
 	fseek(in, 0, SEEK_SET);
-
 	buf = malloc(len);
-	filesize = len;
-
-	if (buf)
-		fread(buf, len, 1, in);
-	else
-	{
+	if (!buf) {
 		printf("Memory allocation failed.\n");
 		return EXIT_FAILURE;
 	}
+
+	filesize = len;
+	fread(buf, len, 1, in);
 
 	//map header structs onto the buffer
 	header = *(dheader_t*)buf;
@@ -221,18 +221,9 @@ int main(int argc, char* argv[])
 				header.lumps[i].length, argv[1]);
 	}
 
-	cmod_base = buf;
-
-	printf("Map textures:\n");
-	CMod_LoadSurfaces(&header.lumps[LUMP_TEXINFO]);
-
-	printf("Map entities:\n");
-	CMod_LoadEntityString(&header.lumps[LUMP_ENTITIES]);
-
 	if (buf)
 		free(buf);
 	fclose(in);
-
 	return EXIT_SUCCESS;
 }
 
@@ -428,7 +419,7 @@ int DrivePath(char* filepath)
 			}
 		}
 	}
-	printf("%i map files processed.\n", nfiles);
+	count_total_files = nfiles;
 	_findclose(hFile);
 	return (status);
 }
