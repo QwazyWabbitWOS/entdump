@@ -73,7 +73,8 @@
 
 typedef struct
 {
-	int		fileofs, filelen;
+	int		fileofs;
+	int		filelen;
 } lump_t;
 
 typedef struct
@@ -113,32 +114,15 @@ int		numtexinfo;
 char	map_entitystring[MAX_MAP_ENTSTRING];
 mapsurface_t	map_surfaces[MAX_MAP_TEXINFO];
 
-#define ERR_DROP 1
-
-void Com_Error (int code, char *fmt, ...)
-{
-	va_list		argptr;
-	static char		msg[1024];
-	
-	va_start (argptr,fmt);
-	vsprintf (msg,fmt,argptr);
-	va_end (argptr);
-	
-	if(code == ERR_DROP)
-	{
-		fprintf (stderr, "FATAL ERROR: %s\n", msg);
-		exit (1);
-	}
-}
-
 void CMod_LoadEntityString (lump_t *l)
 {
 	char *newline; // Nick - new pointer for newline.
 	
-	//	int numentitychars = l->filelen;
-	if (l->filelen > MAX_MAP_ENTSTRING)
-		Com_Error (ERR_DROP, "Map has too large entity lump (%d > %d)", l->filelen, MAX_MAP_ENTSTRING);
-	
+	if (l->filelen > MAX_MAP_ENTSTRING) {
+		fprintf(stderr, "Map has too large entity lump (%d > %d)", l->filelen, MAX_MAP_ENTSTRING);
+		exit(EXIT_FAILURE);
+	}
+
 	memcpy (map_entitystring, cmod_base + l->fileofs, l->filelen);
 	
 	newline = &map_entitystring[strlen(map_entitystring)-1];	
@@ -149,9 +133,6 @@ void CMod_LoadEntityString (lump_t *l)
 }
 
 /*
-=================
-CMod_LoadSurfaces
-=================
 //QW// pulled this from quake2 engine source and modified
 */
 void CMod_LoadSurfaces (lump_t *l)
@@ -162,13 +143,19 @@ void CMod_LoadSurfaces (lump_t *l)
 	int		uniques;
 	
 	in = (void *)(cmod_base + l->fileofs);
-	if (l->filelen % sizeof(*in))
-		Com_Error (ERR_DROP, "CMod_LoadSurfaces: funny lump size");
+	if (l->filelen % sizeof(*in)) {
+		fprintf(stderr, "CMod_LoadSurfaces: funny lump size");
+		exit(EXIT_FAILURE);
+	}
 	count = l->filelen / sizeof(*in);
-	if (count < 1)
-		Com_Error (ERR_DROP, "CMod_LoadSurfaces: Map with no surfaces");
-	if (count > MAX_MAP_TEXINFO)
-		Com_Error (ERR_DROP, "CMod_LoadSurfaces: Map has too many surfaces");
+	if (count < 1) {
+		fprintf(stderr, "CMod_LoadSurfaces: Map with no surfaces");
+		exit(EXIT_FAILURE);
+	}
+	if (count > MAX_MAP_TEXINFO) {
+		fprintf(stderr, "CMod_LoadSurfaces: Map has too many surfaces");
+		exit(EXIT_FAILURE);
+	}
 	
 	numtexinfo = count;
 	out = map_surfaces;
@@ -211,7 +198,7 @@ int main(int argc, char* argv[])
 		if (!in) 
 		{
 			fprintf (stderr, "FATAL ERROR: fopen() on %s failed.\n", argv[1]);
-			exit (1);
+			exit (EXIT_FAILURE);
 		}
 	}
 	else
@@ -222,7 +209,7 @@ int main(int argc, char* argv[])
 		printf("Usage: entdump mapname.bsp \n");
 		printf("   or: entdump mapname.bsp > mapname.txt \n");
 		printf("   or: entdump mapname.bsp | more \n");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 	
 	fseek (in, 0, SEEK_END);
@@ -230,14 +217,22 @@ int main(int argc, char* argv[])
 	fseek (in, 0, SEEK_SET);
 	
 	buf = malloc(len);
+	if (!buf)
+	{
+		fprintf(stderr, "Memory allocation failed!\n");
+		exit(EXIT_FAILURE);
+	}
+
 	fread (buf, len, 1, in);
 	
 	//map header structs onto the buffer
 	header = *(dheader_t *)buf;
 	
-	if (header.version != BSPVERSION)
-		Com_Error (ERR_DROP, "This is not a valid BSP file.");
-	
+	if (header.version != BSPVERSION) {
+		fprintf(stderr, "This is not a valid BSP file.");
+		exit(EXIT_FAILURE);
+	}
+
 	cmod_base = buf;
 	
 	// load into heap
