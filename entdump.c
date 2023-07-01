@@ -71,16 +71,16 @@
 #define	MAX_MAP_LIGHTING	0x200000
 #define	MAX_MAP_VISIBILITY	0x100000
 
-typedef struct
+typedef struct lump_header
 {
 	int		fileofs;
 	int		filelen;
 } lump_t;
 
-typedef struct
+typedef struct bsp_header
 {
 	int			ident;
-	int			version;	
+	int			version;
 	lump_t		lumps[HEADER_LUMPS];
 } dheader_t;
 
@@ -109,7 +109,7 @@ typedef struct mapsurface_s  // used internally due to name len probs //ZOID
 
 typedef unsigned char byte;
 
-byte	*cmod_base;
+byte* cmod_base;
 int		numtexinfo;
 char	map_entitystring[MAX_MAP_ENTSTRING];
 mapsurface_t	map_surfaces[MAX_MAP_TEXINFO];
@@ -118,35 +118,39 @@ mapsurface_t	map_surfaces[MAX_MAP_TEXINFO];
 int print_textures = 0;
 int print_entities = 1;
 
-void CMod_LoadEntityString (lump_t *l)
+void CMod_LoadEntityString(lump_t* l);
+void CMod_LoadSurfaces(lump_t* l);
+void parse_args(char** argv, int argc);
+
+void CMod_LoadEntityString(lump_t* l)
 {
-	char *newline; // Nick - new pointer for newline.
-	
+	char* newline; // Nick - new pointer for newline.
+
 	if (l->filelen > MAX_MAP_ENTSTRING) {
 		fprintf(stderr, "Map has too large entity lump (%d > %d)", l->filelen, MAX_MAP_ENTSTRING);
 		exit(EXIT_FAILURE);
 	}
 
-	memcpy (map_entitystring, cmod_base + l->fileofs, l->filelen);
-	
-	newline = &map_entitystring[strlen(map_entitystring)-1];	
+	memcpy(map_entitystring, cmod_base + l->fileofs, l->filelen);
+
+	newline = &map_entitystring[strlen(map_entitystring) - 1];
 	if (strcmp(newline, "\n") == 0)		// Nick - check if already a newline present
-		map_entitystring[strlen(map_entitystring)-1] = '\0';	// Nick - Clear it if there is
-	
-	printf ("%s\n", map_entitystring); // Newline here (so only one).
+		map_entitystring[strlen(map_entitystring) - 1] = '\0';	// Nick - Clear it if there is
+
+	printf("%s\n", map_entitystring); // Newline here (so only one).
 }
 
 /*
 //QW// pulled this from quake2 engine source and modified
 */
-void CMod_LoadSurfaces (lump_t *l)
+void CMod_LoadSurfaces(lump_t* l)
 {
-	texinfo_t	*in;
-	mapsurface_t	*out, *list;
+	texinfo_t* in;
+	mapsurface_t* out, * list;
 	int		i, j, count;
 	int		uniques;
-	
-	in = (void *)(cmod_base + l->fileofs);
+
+	in = (void*)(cmod_base + l->fileofs);
 	if (l->filelen % sizeof(*in)) {
 		fprintf(stderr, "CMod_LoadSurfaces: funny lump size");
 		exit(EXIT_FAILURE);
@@ -160,37 +164,38 @@ void CMod_LoadSurfaces (lump_t *l)
 		fprintf(stderr, "CMod_LoadSurfaces: Map has too many surfaces");
 		exit(EXIT_FAILURE);
 	}
-	
+
 	numtexinfo = count;
 	out = map_surfaces;
 	uniques = 0;
-	
-	for (i=0; i<count; i++, in++, out++)
+
+	for (i = 0; i < count; i++, in++, out++)
 	{
-		strncpy (out->c.name, in->texture, sizeof(out->c.name)-1);
-		strncpy (out->rname, in->texture, sizeof(out->rname)-1);
+		strncpy(out->c.name, in->texture, sizeof(out->c.name) - 1);
+		strncpy(out->rname, in->texture, sizeof(out->rname) - 1);
 		out->c.flags = in->flags;
 		out->c.value = in->value;
 		out->dupe = 0;
 
 		list = map_surfaces;
-		for (j=0; j<count; j++, list++)	// identify each unique texture name
+		for (j = 0; j < count; j++, list++)	// identify each unique texture name
 		{
-			if (strcmp(list->rname,"") != 0 && list != out 
+			if (strcmp(list->rname, "") != 0 && list != out
 				&& strcmp(list->rname, out->rname) == 0)
-					out->dupe = 1;	//flag the duplicate
+				out->dupe = 1;	//flag the duplicate
 		}
-		if (out->dupe == 0) 
+		if (out->dupe == 0)
 		{
 			uniques++;
-			printf ("%s\n", out->rname);
+			printf("%s\n", out->rname);
 		}
 	}
 	printf("Map uses %i unique textures %i times\n", uniques, count);
 }
 
 // Nice option parser from zardoru's entdump rewrite.
-void parse_args(char** argv, int argc) {
+void parse_args(char** argv, int argc)
+{
 	int print_textures_seen = 0;
 
 	for (int i = 1; i < argc - 1; i++) {
@@ -221,18 +226,18 @@ void parse_args(char** argv, int argc) {
 
 int main(int argc, char* argv[])
 {
-	byte		*buf;
+	byte* buf;
 	int			len;
 	dheader_t	header;
-	FILE		*in = NULL;
-	
+	FILE* in = NULL;
+
 	if (argc > 1)
 	{
 		in = fopen(argv[argc - 1], "rb");
-		if (!in) 
+		if (!in)
 		{
-			fprintf (stderr, "FATAL ERROR: fopen() on %s failed.\n", argv[1]);
-			exit (EXIT_FAILURE);
+			fprintf(stderr, "FATAL ERROR: fopen() on %s failed.\n", argv[1]);
+			exit(EXIT_FAILURE);
 		}
 	}
 	else
@@ -247,13 +252,13 @@ int main(int argc, char* argv[])
 		printf("   or: entdump -t -e mapname.bsp | more \n");
 		exit(EXIT_FAILURE);
 	}
-	
+
 	parse_args(argv, argc);
 
-	fseek (in, 0, SEEK_END);
-	len = ftell (in);
-	fseek (in, 0, SEEK_SET);
-	
+	fseek(in, 0, SEEK_END);
+	len = ftell(in);
+	fseek(in, 0, SEEK_SET);
+
 	buf = malloc(len);
 	if (!buf)
 	{
@@ -261,27 +266,27 @@ int main(int argc, char* argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	fread (buf, len, 1, in);
-	
+	fread(buf, len, 1, in);
+
 	//map header structs onto the buffer
-	header = *(dheader_t *)buf;
-	
+	header = *(dheader_t*)buf;
+
 	if (header.version != BSPVERSION) {
 		fprintf(stderr, "This is not a valid BSP file.");
 		exit(EXIT_FAILURE);
 	}
 
 	cmod_base = buf;
-	
+
 	if (print_textures) {
 		CMod_LoadSurfaces(&header.lumps[LUMP_TEXINFO]);
 		printf("Map entities:\n");
 	}
-		if (print_entities) {
+	if (print_entities) {
 		CMod_LoadEntityString(&header.lumps[LUMP_ENTITIES]);
 	}
 
-	free (buf);
-	fclose (in);
+	free(buf);
+	fclose(in);
 	return EXIT_SUCCESS;
 }
