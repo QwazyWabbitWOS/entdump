@@ -114,6 +114,10 @@ int		numtexinfo;
 char	map_entitystring[MAX_MAP_ENTSTRING];
 mapsurface_t	map_surfaces[MAX_MAP_TEXINFO];
 
+// arg state from zardoru
+int print_textures = 0;
+int print_entities = 1;
+
 void CMod_LoadEntityString (lump_t *l)
 {
 	char *newline; // Nick - new pointer for newline.
@@ -185,6 +189,36 @@ void CMod_LoadSurfaces (lump_t *l)
 	printf("Map uses %i unique textures %i times\n", uniques, count);
 }
 
+// Nice option parser from zardoru's entdump rewrite.
+void parse_args(char** argv, int argc) {
+	int print_textures_seen = 0;
+
+	for (int i = 1; i < argc - 1; i++) {
+		if (argv[i][0] == '-') {
+			size_t arglen = strlen(argv[i]);
+
+			// parse t, e, whatever
+			for (size_t j = 1; j < arglen; j++) {
+				char opt = argv[i][j];
+				switch (opt) {
+				case 't':
+					print_textures = 1;
+					if (!print_textures_seen) {
+						print_entities = 0;
+						print_textures_seen = 1;
+					}
+					break;
+				case 'e':
+					print_entities = 1;
+					break;
+				default:
+					printf("unknown option '%c'\n", opt);
+				}
+			}
+		}
+	}
+}
+
 int main(int argc, char* argv[])
 {
 	byte		*buf;
@@ -194,7 +228,7 @@ int main(int argc, char* argv[])
 	
 	if (argc > 1)
 	{
-		in = fopen(argv[1], "rb");
+		in = fopen(argv[argc - 1], "rb");
 		if (!in) 
 		{
 			fprintf (stderr, "FATAL ERROR: fopen() on %s failed.\n", argv[1]);
@@ -207,11 +241,15 @@ int main(int argc, char* argv[])
 		printf("Entdump is used for extracting entities from quake2 bsp files in text format\n");
 		printf("for usage with the added ent file support in Xatrix+ and other mods.\n");
 		printf("Usage: entdump mapname.bsp \n");
-		printf("   or: entdump mapname.bsp > mapname.txt \n");
+		printf("   or: entdump mapname.bsp > mapname.ent \n");
 		printf("   or: entdump mapname.bsp | more \n");
+		printf("   or: entdump -t mapname.bsp | more \n");
+		printf("   or: entdump -t -e mapname.bsp | more \n");
 		exit(EXIT_FAILURE);
 	}
 	
+	parse_args(argv, argc);
+
 	fseek (in, 0, SEEK_END);
 	len = ftell (in);
 	fseek (in, 0, SEEK_SET);
@@ -235,12 +273,15 @@ int main(int argc, char* argv[])
 
 	cmod_base = buf;
 	
-	// load into heap
-	//CMod_LoadSurfaces (&header.lumps[LUMP_TEXINFO]);
-	//printf("Map entities:\n");
-	CMod_LoadEntityString (&header.lumps[LUMP_ENTITIES]);
-	
+	if (print_textures) {
+		CMod_LoadSurfaces(&header.lumps[LUMP_TEXINFO]);
+		printf("Map entities:\n");
+	}
+		if (print_entities) {
+		CMod_LoadEntityString(&header.lumps[LUMP_ENTITIES]);
+	}
+
 	free (buf);
 	fclose (in);
-	return 0;
+	return EXIT_SUCCESS;
 }
